@@ -167,7 +167,7 @@ static void mysyslog(int fd, int logflags, int pri, char *tag, char *msg)
 static void __attribute__ ((__noreturn__)) usage(FILE *out)
 {
 	fputs(USAGE_HEADER, out);
-	fprintf(out, " %s [options] [<message>]\n", program_invocation_short_name);
+	fprintf(out, " %s [options]\n", program_invocation_short_name);
 
 	fputs(USAGE_OPTIONS, out);
 	fputs(" -P, --port <number>   use this UDP port\n", out);
