@@ -142,14 +142,10 @@ static int inet_socket(const char *servername, const char *port)
 
 static void mysyslog(int fd, int logflags, int pri, char *tag, char *msg)
 {
-       char buf[1000], pid[30], *cp, *tp;
+       char buf[1000], *cp, *tp;
        time_t now;
 
        if (fd > -1) {
-               if (logflags & LOG_PID)
-                       snprintf (pid, sizeof(pid), "[%d]", getpid());
-	       else
-		       pid[0] = 0;
                if (tag)
 		       cp = tag;
 	       else {
@@ -160,8 +156,8 @@ static void mysyslog(int fd, int logflags, int pri, char *tag, char *msg)
 	       time(&now);
 	       tp = ctime(&now)+4;
 
-               snprintf(buf, sizeof(buf), "<%d>%.15s %.200s%s: %.400s",
-			pri, tp, cp, pid, msg);
+               snprintf(buf, sizeof(buf), "<%d>%.15s %.200s: %.400s",
+			pri, tp, cp, msg);
 
                if (write(fd, buf, strlen(buf)+1) < 0)
                        return; /* error */
@@ -174,7 +170,6 @@ static void __attribute__ ((__noreturn__)) usage(FILE *out)
 	fprintf(out, " %s [options] [<message>]\n", program_invocation_short_name);
 
 	fputs(USAGE_OPTIONS, out);
-	fputs(" -i, --id              log the process ID too\n", out);
 	fputs(" -f, --file <file>     log the contents of this file\n", out);
 	fputs(" -P, --port <number>   use this UDP port\n", out);
 	fputs(" -p, --priority <prio> mark given message with this priority\n", out);
@@ -203,7 +198,6 @@ int main(int argc, char **argv)
 	char *port = NULL;
 	int LogSock = -1;
 	static const struct option longopts[] = {
-		{ "id",		no_argument,	    0, 'i' },
 		{ "stderr",	no_argument,	    0, 's' },
 		{ "file",	required_argument,  0, 'f' },
 		{ "priority",	required_argument,  0, 'p' },
@@ -219,16 +213,13 @@ int main(int argc, char **argv)
 	tag = NULL;
 	pri = LOG_NOTICE;
 	logflags = 0;
-	while ((ch = getopt_long(argc, argv, "f:ip:st:P:Vh",
+	while ((ch = getopt_long(argc, argv, "f:p:st:P:Vh",
 					    longopts, NULL)) != -1) {
 		switch (ch) {
 		case 'f':		/* file to log */
 			if (freopen(optarg, "r", stdin) == NULL)
 				err(EXIT_FAILURE, "file %s",
 				    optarg);
-			break;
-		case 'i':		/* log process id also */
-			logflags |= LOG_PID;
 			break;
 		case 'p':		/* priority */
 			pri = pencode(optarg);
