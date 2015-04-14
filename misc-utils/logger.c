@@ -60,12 +60,6 @@
 #include <syslog.h>
 
 enum {
-	TYPE_UDP = (1 << 1),
-	TYPE_TCP = (1 << 2),
-	ALL_TYPES = TYPE_UDP | TYPE_TCP
-};
-
-enum {
 	OPT_PRIO_PREFIX = CHAR_MAX + 1
 };
 
@@ -137,52 +131,36 @@ static int pencode(char *s)
 	return ((lev & LOG_PRIMASK) | (fac & LOG_FACMASK));
 }
 
-static int inet_socket(const char *servername, const char *port,
-		       const int socket_type)
+static int inet_socket(const char *servername, const char *port)
 {
-	int fd, errcode, i;
+	int fd, errcode;
 	struct addrinfo hints, *res;
-	const char *p = port;
 
 	if(!port)
 		errx(EXIT_FAILURE, "Port number is required");
 
-	for (i = 2; i; i--) {
-		memset(&hints, 0, sizeof(hints));
-		if (i == 2 && socket_type & TYPE_UDP) {
-			hints.ai_socktype = SOCK_DGRAM;
-			if (port == NULL)
-				p = "syslog";
-		}
-		if (i == 1 && socket_type & TYPE_TCP) {
-			hints.ai_socktype = SOCK_STREAM;
-			if (port == NULL)
-				p = "syslog-conn";
-		}
-		if (hints.ai_socktype == 0)
-			continue;
-		hints.ai_family = AF_UNSPEC;
-		errcode = getaddrinfo(servername, p, &hints, &res);
-		if (errcode != 0)
-			errx(EXIT_FAILURE, "failed to resolve name %s port %s: %s",
-			     servername, p, gai_strerror(errcode));
-		if ((fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) == -1) {
-			freeaddrinfo(res);
-			continue;
-		}
-		if (connect(fd, res->ai_addr, res->ai_addrlen) == -1) {
-			freeaddrinfo(res);
-			close(fd);
-			continue;
-		}
-
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_socktype = SOCK_DGRAM;
+	hints.ai_family = AF_UNSPEC;
+	errcode = getaddrinfo(servername, port, &hints, &res);
+	if (errcode != 0){
 		freeaddrinfo(res);
-		break;
+		errx(EXIT_FAILURE, "failed to resolve name %s port %s: %s",
+		     servername, port, gai_strerror(errcode));
 	}
 
-	if (i == 0)
-		errx(EXIT_FAILURE, "failed to connect to %s port %s", servername, p);
+	if ((fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) == -1) {
+		freeaddrinfo(res);
+		errx(EXIT_FAILURE, "failed to connect to %s port %s", servername, port);
+	}
 
+	if (connect(fd, res->ai_addr, res->ai_addrlen) == -1) {
+		freeaddrinfo(res);
+		close(fd);
+		errx(EXIT_FAILURE, "failed to connect to %s port %s", servername, port);
+	}
+
+	freeaddrinfo(res);
 	return fd;
 }
 
@@ -220,11 +198,8 @@ static void __attribute__ ((__noreturn__)) usage(FILE *out)
 	fprintf(out, " %s [options] [<message>]\n", program_invocation_short_name);
 
 	fputs(USAGE_OPTIONS, out);
-	fputs(" -T, --tcp             use TCP only\n", out);
-	fputs(" -d, --udp             use UDP only\n", out);
 	fputs(" -i, --id              log the process ID too\n", out);
 	fputs(" -f, --file <file>     log the contents of this file\n", out);
-	fputs(" -n, --server <name>   write to this remote syslog server\n", out);
 	fputs(" -P, --port <number>   use this UDP port\n", out);
 	fputs(" -p, --priority <prio> mark given message with this priority\n", out);
 	fputs("     --prio-prefix     look for a prefix on every line read from stdin\n", out);
@@ -249,18 +224,15 @@ int main(int argc, char **argv)
 {
 	int ch, logflags, pri, prio_prefix;
 	char *tag, buf[1024];
-	char *server = NULL;
+	char const* server = "127.0.0.1";
 	char *port = NULL;
-	int LogSock = -1, socket_type = ALL_TYPES;
+	int LogSock = -1;
 	static const struct option longopts[] = {
 		{ "id",		no_argument,	    0, 'i' },
 		{ "stderr",	no_argument,	    0, 's' },
 		{ "file",	required_argument,  0, 'f' },
 		{ "priority",	required_argument,  0, 'p' },
 		{ "tag",	required_argument,  0, 't' },
-		{ "udp",	no_argument,	    0, 'd' },
-		{ "tcp",	no_argument,	    0, 'T' },
-		{ "server",	required_argument,  0, 'n' },
 		{ "port",	required_argument,  0, 'P' },
 		{ "version",	no_argument,	    0, 'V' },
 		{ "help",	no_argument,	    0, 'h' },
@@ -274,7 +246,7 @@ int main(int argc, char **argv)
 	pri = LOG_NOTICE;
 	logflags = 0;
 	prio_prefix = 0;
-	while ((ch = getopt_long(argc, argv, "f:ip:st:dTn:P:Vh",
+	while ((ch = getopt_long(argc, argv, "f:ip:st:P:Vh",
 					    longopts, NULL)) != -1) {
 		switch (ch) {
 		case 'f':		/* file to log */
@@ -293,15 +265,6 @@ int main(int argc, char **argv)
 			break;
 		case 't':		/* tag */
 			tag = optarg;
-			break;
-		case 'd':
-			socket_type = TYPE_UDP;
-			break;
-		case 'T':
-			socket_type = TYPE_TCP;
-			break;
-		case 'n':
-			server = optarg;
 			break;
 		case 'P':
 			port = optarg;
@@ -323,10 +286,7 @@ int main(int argc, char **argv)
 	argv += optind;
 
 	/* setup for logging */
-	if (server)
-		LogSock = inet_socket(server, port, socket_type);
-	else
-		openlog(tag ? tag : getlogin(), logflags, 0);
+	LogSock = inet_socket(server, port);
 
 	/* log input line if appropriate */
 	if (argc > 0) {
@@ -347,16 +307,10 @@ int main(int argc, char **argv)
 			if (prio_prefix && msg[0] == '<')
 				msg = get_prio_prefix(msg, &pri);
 
-		    if (!server)
-			syslog(pri, "%s", msg);
-		    else
 			mysyslog(LogSock, logflags, pri, tag, msg);
 		}
 	}
-	if (!server)
-		closelog();
-	else
-		close(LogSock);
 
+	close(LogSock);
 	return EXIT_SUCCESS;
 }
