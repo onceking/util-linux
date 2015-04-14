@@ -327,36 +327,7 @@ int main(int argc, char **argv)
 
 	/* log input line if appropriate */
 	if (argc > 0) {
-		register char *p, *endp;
-		size_t len;
-
-		for (p = buf, endp = buf + sizeof(buf) - 2; *argv;) {
-			len = strlen(*argv);
-			if (p + len > endp && p > buf) {
-			    if (!server)
-				syslog(pri, "%s", buf);
-			    else
-				mysyslog(LogSock, logflags, pri, tag, buf);
-				p = buf;
-			}
-			if (len > sizeof(buf) - 1) {
-			    if (!server)
-				syslog(pri, "%s", *argv++);
-			    else
-				mysyslog(LogSock, logflags, pri, tag, *argv++);
-			} else {
-				if (p != buf)
-					*p++ = ' ';
-				memmove(p, *argv++, len);
-				*(p += len) = '\0';
-			}
-		}
-		if (p != buf) {
-		    if (!server)
-			syslog(pri, "%s", buf);
-		    else
-			mysyslog(LogSock, logflags, pri, tag, buf);
-		}
+		errx(EXIT_FAILURE, "extra command line arguments.");
 	} else {
 		char *msg;
 		int default_priority = pri;
