@@ -138,39 +138,6 @@ static int pencode(char *s)
 	return ((lev & LOG_PRIMASK) | (fac & LOG_FACMASK));
 }
 
-static int unix_socket(const char *path, const int socket_type)
-{
-	int fd, i;
-	static struct sockaddr_un s_addr;	/* AF_UNIX address of local logger */
-
-	if (strlen(path) >= sizeof(s_addr.sun_path))
-		errx(EXIT_FAILURE, _("openlog %s: pathname too long"), path);
-
-	s_addr.sun_family = AF_UNIX;
-	strcpy(s_addr.sun_path, path);
-
-	for (i = 2; i; i--) {
-		int st = -1;
-
-		if (i == 2 && socket_type & TYPE_UDP)
-			st = SOCK_DGRAM;
-		if (i == 1 && socket_type & TYPE_TCP)
-			st = SOCK_STREAM;
-		if (st == -1 || (fd = socket(AF_UNIX, st, 0)) == -1)
-			continue;
-		if (connect(fd, (struct sockaddr *)&s_addr, sizeof(s_addr)) == -1) {
-			close(fd);
-			continue;
-		}
-		break;
-	}
-
-	if (i == 0)
-		err(EXIT_FAILURE, _("socket %s"), path);
-
-	return fd;
-}
-
 static int inet_socket(const char *servername, const char *port,
 		       const int socket_type)
 {
@@ -261,7 +228,6 @@ static void __attribute__ ((__noreturn__)) usage(FILE *out)
 	fputs(_("     --prio-prefix     look for a prefix on every line read from stdin\n"), out);
 	fputs(_(" -s, --stderr          output message to standard error as well\n"), out);
 	fputs(_(" -t, --tag <tag>       mark every line with this tag\n"), out);
-	fputs(_(" -u, --socket <socket> write to this Unix socket\n"), out);
 
 	fputs(USAGE_SEPARATOR, out);
 	fputs(USAGE_HELP, out);
@@ -281,7 +247,6 @@ int main(int argc, char **argv)
 {
 	int ch, logflags, pri, prio_prefix;
 	char *tag, buf[1024];
-	char *usock = NULL;
 	char *server = NULL;
 	char *port = NULL;
 	int LogSock = -1, socket_type = ALL_TYPES;
@@ -291,7 +256,6 @@ int main(int argc, char **argv)
 		{ "file",	required_argument,  0, 'f' },
 		{ "priority",	required_argument,  0, 'p' },
 		{ "tag",	required_argument,  0, 't' },
-		{ "socket",	required_argument,  0, 'u' },
 		{ "udp",	no_argument,	    0, 'd' },
 		{ "tcp",	no_argument,	    0, 'T' },
 		{ "server",	required_argument,  0, 'n' },
@@ -311,7 +275,7 @@ int main(int argc, char **argv)
 	pri = LOG_NOTICE;
 	logflags = 0;
 	prio_prefix = 0;
-	while ((ch = getopt_long(argc, argv, "f:ip:st:u:dTn:P:Vh",
+	while ((ch = getopt_long(argc, argv, "f:ip:st:dTn:P:Vh",
 					    longopts, NULL)) != -1) {
 		switch (ch) {
 		case 'f':		/* file to log */
@@ -330,9 +294,6 @@ int main(int argc, char **argv)
 			break;
 		case 't':		/* tag */
 			tag = optarg;
-			break;
-		case 'u':		/* unix socket */
-			usock = optarg;
 			break;
 		case 'd':
 			socket_type = TYPE_UDP;
@@ -365,8 +326,6 @@ int main(int argc, char **argv)
 	/* setup for logging */
 	if (server)
 		LogSock = inet_socket(server, port, socket_type);
-	else if (usock)
-		LogSock = unix_socket(usock, socket_type);
 	else
 		openlog(tag ? tag : getlogin(), logflags, 0);
 
@@ -378,14 +337,14 @@ int main(int argc, char **argv)
 		for (p = buf, endp = buf + sizeof(buf) - 2; *argv;) {
 			len = strlen(*argv);
 			if (p + len > endp && p > buf) {
-			    if (!usock && !server)
+			    if (!server)
 				syslog(pri, "%s", buf);
 			    else
 				mysyslog(LogSock, logflags, pri, tag, buf);
 				p = buf;
 			}
 			if (len > sizeof(buf) - 1) {
-			    if (!usock && !server)
+			    if (!server)
 				syslog(pri, "%s", *argv++);
 			    else
 				mysyslog(LogSock, logflags, pri, tag, *argv++);
@@ -397,7 +356,7 @@ int main(int argc, char **argv)
 			}
 		}
 		if (p != buf) {
-		    if (!usock && !server)
+		    if (!server)
 			syslog(pri, "%s", buf);
 		    else
 			mysyslog(LogSock, logflags, pri, tag, buf);
@@ -418,13 +377,13 @@ int main(int argc, char **argv)
 			if (prio_prefix && msg[0] == '<')
 				msg = get_prio_prefix(msg, &pri);
 
-		    if (!usock && !server)
+		    if (!server)
 			syslog(pri, "%s", msg);
 		    else
 			mysyslog(LogSock, logflags, pri, tag, msg);
 		}
 	}
-	if (!usock && !server)
+	if (!server)
 		closelog();
 	else
 		close(LogSock);
