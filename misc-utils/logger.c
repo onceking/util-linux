@@ -139,7 +139,7 @@ static int inet_socket(const char *servername, const char *port)
 	return fd;
 }
 
-static void mysyslog(int fd, int logflags, int pri, char *tag, char *msg)
+static void mysyslog(int fd, int pri, char *tag, char *msg)
 {
        char buf[1000], *cp, *tp;
        time_t now;
@@ -190,32 +190,26 @@ static void __attribute__ ((__noreturn__)) usage(FILE *out)
  */
 int main(int argc, char **argv)
 {
-	int ch, logflags, pri;
+	int ch, pri;
 	char *tag, buf[1024];
 	char const* server = "127.0.0.1";
 	char *port = NULL;
 	int LogSock = -1;
 	static const struct option longopts[] = {
-		{ "stderr",	no_argument,	    0, 's' },
 		{ "priority",	required_argument,  0, 'p' },
 		{ "tag",	required_argument,  0, 't' },
 		{ "port",	required_argument,  0, 'P' },
-		{ "version",	no_argument,	    0, 'V' },
 		{ "help",	no_argument,	    0, 'h' },
 		{ NULL,		0, 0, 0 }
 	};
 
 	tag = NULL;
 	pri = LOG_NOTICE;
-	logflags = 0;
 	while ((ch = getopt_long(argc, argv, "p:st:P:Vh",
 					    longopts, NULL)) != -1) {
 		switch (ch) {
 		case 'p':		/* priority */
 			pri = pencode(optarg);
-			break;
-		case 's':		/* log to standard error */
-			logflags |= LOG_PERROR;
 			break;
 		case 't':		/* tag */
 			tag = optarg;
@@ -223,14 +217,13 @@ int main(int argc, char **argv)
 		case 'P':
 			port = optarg;
 			break;
-		case 'V':
-			printf(UTIL_LINUX_VERSION);
-			exit(EXIT_SUCCESS);
 		case 'h':
 			usage(stdout);
+			exit(EXIT_SUCCESS);
 		case '?':
 		default:
 			usage(stderr);
+			exit(EXIT_FAILURE);
 		}
 	}
 	argc -= optind;
@@ -255,7 +248,7 @@ int main(int argc, char **argv)
 
 			msg = buf;
 			pri = default_priority;
-			mysyslog(LogSock, logflags, pri, tag, msg);
+			mysyslog(LogSock, pri, tag, msg);
 		}
 	}
 
