@@ -170,7 +170,6 @@ static void __attribute__ ((__noreturn__)) usage(FILE *out)
 	fprintf(out, " %s [options] [<message>]\n", program_invocation_short_name);
 
 	fputs(USAGE_OPTIONS, out);
-	fputs(" -f, --file <file>     log the contents of this file\n", out);
 	fputs(" -P, --port <number>   use this UDP port\n", out);
 	fputs(" -p, --priority <prio> mark given message with this priority\n", out);
 	fputs(" -s, --stderr          output message to standard error as well\n", out);
@@ -199,7 +198,6 @@ int main(int argc, char **argv)
 	int LogSock = -1;
 	static const struct option longopts[] = {
 		{ "stderr",	no_argument,	    0, 's' },
-		{ "file",	required_argument,  0, 'f' },
 		{ "priority",	required_argument,  0, 'p' },
 		{ "tag",	required_argument,  0, 't' },
 		{ "port",	required_argument,  0, 'P' },
@@ -213,14 +211,9 @@ int main(int argc, char **argv)
 	tag = NULL;
 	pri = LOG_NOTICE;
 	logflags = 0;
-	while ((ch = getopt_long(argc, argv, "f:p:st:P:Vh",
+	while ((ch = getopt_long(argc, argv, "p:st:P:Vh",
 					    longopts, NULL)) != -1) {
 		switch (ch) {
-		case 'f':		/* file to log */
-			if (freopen(optarg, "r", stdin) == NULL)
-				err(EXIT_FAILURE, "file %s",
-				    optarg);
-			break;
 		case 'p':		/* priority */
 			pri = pencode(optarg);
 			break;
