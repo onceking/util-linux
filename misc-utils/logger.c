@@ -144,6 +144,9 @@ static int inet_socket(const char *servername, const char *port,
 	struct addrinfo hints, *res;
 	const char *p = port;
 
+	if(!port)
+		errx(EXIT_FAILURE, "Port number is required");
+
 	for (i = 2; i; i--) {
 		memset(&hints, 0, sizeof(hints));
 		if (i == 2 && socket_type & TYPE_UDP) {
