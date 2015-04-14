@@ -59,30 +59,6 @@
 #define	SYSLOG_NAMES
 #include <syslog.h>
 
-enum {
-	OPT_PRIO_PREFIX = CHAR_MAX + 1
-};
-
-
-static char* get_prio_prefix(char *msg, int *prio)
-{
-	int p;
-	char *end = NULL;
-	int facility = *prio & LOG_FACMASK;
-
-	errno = 0;
-	p = strtoul(msg + 1, &end, 10);
-
-	if (errno || !end || end == msg + 1 || end[0] != '>')
-		return msg;
-
-	if (p & LOG_FACMASK)
-		facility = p & LOG_FACMASK;
-
-	*prio = facility | (p & LOG_PRIMASK);
-	return end + 1;
-}
-
 static int decode(char *name, CODE *codetab)
 {
 	register CODE *c;
@@ -202,7 +178,6 @@ static void __attribute__ ((__noreturn__)) usage(FILE *out)
 	fputs(" -f, --file <file>     log the contents of this file\n", out);
 	fputs(" -P, --port <number>   use this UDP port\n", out);
 	fputs(" -p, --priority <prio> mark given message with this priority\n", out);
-	fputs("     --prio-prefix     look for a prefix on every line read from stdin\n", out);
 	fputs(" -s, --stderr          output message to standard error as well\n", out);
 	fputs(" -t, --tag <tag>       mark every line with this tag\n", out);
 
@@ -222,7 +197,7 @@ static void __attribute__ ((__noreturn__)) usage(FILE *out)
  */
 int main(int argc, char **argv)
 {
-	int ch, logflags, pri, prio_prefix;
+	int ch, logflags, pri;
 	char *tag, buf[1024];
 	char const* server = "127.0.0.1";
 	char *port = NULL;
@@ -236,7 +211,6 @@ int main(int argc, char **argv)
 		{ "port",	required_argument,  0, 'P' },
 		{ "version",	no_argument,	    0, 'V' },
 		{ "help",	no_argument,	    0, 'h' },
-		{ "prio-prefix", no_argument, 0, OPT_PRIO_PREFIX },
 		{ NULL,		0, 0, 0 }
 	};
 
@@ -245,7 +219,6 @@ int main(int argc, char **argv)
 	tag = NULL;
 	pri = LOG_NOTICE;
 	logflags = 0;
-	prio_prefix = 0;
 	while ((ch = getopt_long(argc, argv, "f:ip:st:P:Vh",
 					    longopts, NULL)) != -1) {
 		switch (ch) {
@@ -274,9 +247,6 @@ int main(int argc, char **argv)
 			exit(EXIT_SUCCESS);
 		case 'h':
 			usage(stdout);
-		case OPT_PRIO_PREFIX:
-			prio_prefix = 1;
-			break;
 		case '?':
 		default:
 			usage(stderr);
@@ -304,9 +274,6 @@ int main(int argc, char **argv)
 
 			msg = buf;
 			pri = default_priority;
-			if (prio_prefix && msg[0] == '<')
-				msg = get_prio_prefix(msg, &pri);
-
 			mysyslog(LogSock, logflags, pri, tag, msg);
 		}
 	}
