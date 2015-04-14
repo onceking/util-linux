@@ -106,61 +106,26 @@ static int pencode(char *s)
 	return ((lev & LOG_PRIMASK) | (fac & LOG_FACMASK));
 }
 
-static int inet_socket(const char *servername, const char *port)
+static int inet_socket(uint16_t port)
 {
-	int fd, errcode;
-	struct addrinfo hints, *res;
+	int fd;
+	struct sockaddr_in dest;
 
 	if(!port)
 		errx(EXIT_FAILURE, "Port number is required");
 
-	memset(&hints, 0, sizeof(hints));
-	hints.ai_socktype = SOCK_DGRAM;
-	hints.ai_family = AF_UNSPEC;
-	errcode = getaddrinfo(servername, port, &hints, &res);
-	if (errcode != 0){
-		freeaddrinfo(res);
-		errx(EXIT_FAILURE, "failed to resolve name %s port %s: %s",
-		     servername, port, gai_strerror(errcode));
-	}
+	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+		errx(EXIT_FAILURE, "failed to create socket.");
 
-	if ((fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) == -1) {
-		freeaddrinfo(res);
-		errx(EXIT_FAILURE, "failed to connect to %s port %s", servername, port);
-	}
-
-	if (connect(fd, res->ai_addr, res->ai_addrlen) == -1) {
-		freeaddrinfo(res);
+	dest.sin_family = AF_INET;
+	dest.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+	dest.sin_port = htons(port);
+	if (connect(fd, (struct sockaddr *)&dest, sizeof(struct sockaddr)) == -1) {
 		close(fd);
-		errx(EXIT_FAILURE, "failed to connect to %s port %s", servername, port);
+		errx(EXIT_FAILURE, "failed to connect to port %s", port);
 	}
 
-	freeaddrinfo(res);
 	return fd;
-}
-
-static void mysyslog(int fd, int pri, char *tag, char *msg)
-{
-       char buf[1000], *cp, *tp;
-       time_t now;
-
-       if (fd > -1) {
-               if (tag)
-		       cp = tag;
-	       else {
-		       cp = getlogin();
-		       if (!cp)
-			       cp = "<someone>";
-	       }
-	       time(&now);
-	       tp = ctime(&now)+4;
-
-               snprintf(buf, sizeof(buf), "<%d>%.15s %.200s: %.400s",
-			pri, tp, cp, msg);
-
-               if (write(fd, buf, strlen(buf)+1) < 0)
-                       return; /* error */
-       }
 }
 
 static void usage(FILE *out)
@@ -179,6 +144,45 @@ static void usage(FILE *out)
 		" -h, --help     display this help and exit\n", out);
 }
 
+static void log_from_stdin(int LogSock, int pri, char const* tag){
+	char buf[1024] = "";
+	char *msg;
+	while (fgets(buf, sizeof(buf), stdin) != NULL) {
+		/* glibc is buggy and adds an additional newline,
+		   so we have to remove it here until glibc is fixed */
+		int len = strlen(buf);
+
+		if (len > 0 && buf[len - 1] == '\n')
+			buf[len - 1] = '\0';
+
+		msg = buf;
+
+
+
+       char buf[1000];
+       char const* cp, *tp;
+       time_t now;
+
+
+       if (tag)
+	       cp = tag;
+       else {
+	       cp = getlogin();
+	       if (!cp)
+		       cp = "<someone>";
+       }
+       time(&now);
+       tp = ctime(&now)+4;
+
+       snprintf(buf, sizeof(buf), "<%d>%.15s %.200s: %.400s",
+		pri, tp, cp, msg);
+
+       if (write(fd, buf, strlen(buf)+1) < 0)
+	       return; /* error */
+
+	}
+}
+
 /*
  * logger -- read and log utility
  *
@@ -187,11 +191,10 @@ static void usage(FILE *out)
  */
 int main(int argc, char **argv)
 {
+	int LogSock;
 	int ch, pri;
-	char *tag, buf[1024];
-	char const* server = "127.0.0.1";
-	char *port = NULL;
-	int LogSock = -1;
+	char *tag;
+	uint16_t port;
 	static const struct option longopts[] = {
 		{ "priority",	required_argument,  0, 'p' },
 		{ "tag",	required_argument,  0, 't' },
@@ -202,8 +205,8 @@ int main(int argc, char **argv)
 
 	tag = NULL;
 	pri = LOG_NOTICE;
-	while ((ch = getopt_long(argc, argv, "p:st:P:Vh",
-					    longopts, NULL)) != -1) {
+	while ((ch = getopt_long(argc, argv, "p:st:P:Vh", longopts, NULL)) != -1) {
+		int iport = 0;
 		switch (ch) {
 		case 'p':		/* priority */
 			pri = pencode(optarg);
@@ -212,7 +215,10 @@ int main(int argc, char **argv)
 			tag = optarg;
 			break;
 		case 'P':
-			port = optarg;
+			iport = atoi(optarg);
+			if(iport > (uint16_t)-1 || iport <= 0)
+				errx(EXIT_FAILURE, "Invalid port number");
+			port = iport;
 			break;
 		case 'h':
 			usage(stdout);
@@ -226,29 +232,12 @@ int main(int argc, char **argv)
 	argc -= optind;
 	argv += optind;
 
-	/* setup for logging */
-	LogSock = inet_socket(server, port);
-
-	/* log input line if appropriate */
-	if (argc > 0) {
+	if (argc > 0)
 		errx(EXIT_FAILURE, "extra command line arguments.");
-	} else {
-		char *msg;
-		int default_priority = pri;
-		while (fgets(buf, sizeof(buf), stdin) != NULL) {
-		    /* glibc is buggy and adds an additional newline,
-		       so we have to remove it here until glibc is fixed */
-		    int len = strlen(buf);
 
-		    if (len > 0 && buf[len - 1] == '\n')
-			    buf[len - 1] = '\0';
-
-			msg = buf;
-			pri = default_priority;
-			mysyslog(LogSock, pri, tag, msg);
-		}
-	}
-
+	/* setup for logging */
+	LogSock = inet_socket(port);
+	log_from_stdin(LogSock, pri, tag);
 	close(LogSock);
 	return EXIT_SUCCESS;
 }
