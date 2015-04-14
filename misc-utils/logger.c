@@ -163,23 +163,20 @@ static void mysyslog(int fd, int pri, char *tag, char *msg)
        }
 }
 
-static void __attribute__ ((__noreturn__)) usage(FILE *out)
+static void usage(FILE *out)
 {
-	fputs(USAGE_HEADER, out);
-	fprintf(out, " %s [options]\n", program_invocation_short_name);
-
-	fputs(USAGE_OPTIONS, out);
-	fputs(" -P, --port <number>   use this UDP port\n", out);
-	fputs(" -p, --priority <prio> mark given message with this priority\n", out);
-	fputs(" -s, --stderr          output message to standard error as well\n", out);
-	fputs(" -t, --tag <tag>       mark every line with this tag\n", out);
-
-	fputs(USAGE_SEPARATOR, out);
-	fputs(USAGE_HELP, out);
-	fputs(USAGE_VERSION, out);
-	fprintf(out, USAGE_MAN_TAIL("logger(1)"));
-
-	exit(out == stderr ? EXIT_FAILURE : EXIT_SUCCESS);
+	fputs(
+		"\n"
+		"Usage:\n"
+		" logger [options]\n"
+		"\n"
+		"Options:\n"
+		" -P, --port <number>   use this UDP port\n"
+		" -p, --priority <prio> mark given message with this priority\n"
+		" -s, --stderr          output message to standard error as well\n"
+		" -t, --tag <tag>       mark every line with this tag\n"
+		"\n"
+		" -h, --help     display this help and exit\n", out);
 }
 
 /*
