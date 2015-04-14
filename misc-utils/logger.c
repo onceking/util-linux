@@ -52,7 +52,6 @@
 #include <getopt.h>
 
 #include "c.h"
-#include "closestream.h"
 #include "strutils.h"
 #include "xalloc.h"
 
@@ -205,8 +204,6 @@ int main(int argc, char **argv)
 		{ "help",	no_argument,	    0, 'h' },
 		{ NULL,		0, 0, 0 }
 	};
-
-	atexit(close_stdout);
 
 	tag = NULL;
 	pri = LOG_NOTICE;
