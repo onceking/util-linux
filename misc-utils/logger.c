@@ -53,7 +53,6 @@
 
 #include "c.h"
 #include "closestream.h"
-#include "nls.h"
 #include "strutils.h"
 #include "xalloc.h"
 
@@ -125,7 +124,7 @@ static int pencode(char *s)
 		*s = '\0';
 		fac = decode(save, facilitynames);
 		if (fac < 0)
-			errx(EXIT_FAILURE, _("unknown facility name: %s"), save);
+			errx(EXIT_FAILURE, "unknown facility name: %s", save);
 		*s++ = '.';
 	}
 	else {
@@ -134,7 +133,7 @@ static int pencode(char *s)
 	}
 	lev = decode(s, prioritynames);
 	if (lev < 0)
-		errx(EXIT_FAILURE, _("unknown priority name: %s"), save);
+		errx(EXIT_FAILURE, "unknown priority name: %s", save);
 	return ((lev & LOG_PRIMASK) | (fac & LOG_FACMASK));
 }
 
@@ -162,7 +161,7 @@ static int inet_socket(const char *servername, const char *port,
 		hints.ai_family = AF_UNSPEC;
 		errcode = getaddrinfo(servername, p, &hints, &res);
 		if (errcode != 0)
-			errx(EXIT_FAILURE, _("failed to resolve name %s port %s: %s"),
+			errx(EXIT_FAILURE, "failed to resolve name %s port %s: %s",
 			     servername, p, gai_strerror(errcode));
 		if ((fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) == -1) {
 			freeaddrinfo(res);
@@ -179,7 +178,7 @@ static int inet_socket(const char *servername, const char *port,
 	}
 
 	if (i == 0)
-		errx(EXIT_FAILURE, _("failed to connect to %s port %s"), servername, p);
+		errx(EXIT_FAILURE, "failed to connect to %s port %s", servername, p);
 
 	return fd;
 }
@@ -215,19 +214,19 @@ static void mysyslog(int fd, int logflags, int pri, char *tag, char *msg)
 static void __attribute__ ((__noreturn__)) usage(FILE *out)
 {
 	fputs(USAGE_HEADER, out);
-	fprintf(out, _(" %s [options] [<message>]\n"), program_invocation_short_name);
+	fprintf(out, " %s [options] [<message>]\n", program_invocation_short_name);
 
 	fputs(USAGE_OPTIONS, out);
-	fputs(_(" -T, --tcp             use TCP only\n"), out);
-	fputs(_(" -d, --udp             use UDP only\n"), out);
-	fputs(_(" -i, --id              log the process ID too\n"), out);
-	fputs(_(" -f, --file <file>     log the contents of this file\n"), out);
-	fputs(_(" -n, --server <name>   write to this remote syslog server\n"), out);
-	fputs(_(" -P, --port <number>   use this UDP port\n"), out);
-	fputs(_(" -p, --priority <prio> mark given message with this priority\n"), out);
-	fputs(_("     --prio-prefix     look for a prefix on every line read from stdin\n"), out);
-	fputs(_(" -s, --stderr          output message to standard error as well\n"), out);
-	fputs(_(" -t, --tag <tag>       mark every line with this tag\n"), out);
+	fputs(" -T, --tcp             use TCP only\n", out);
+	fputs(" -d, --udp             use UDP only\n", out);
+	fputs(" -i, --id              log the process ID too\n", out);
+	fputs(" -f, --file <file>     log the contents of this file\n", out);
+	fputs(" -n, --server <name>   write to this remote syslog server\n", out);
+	fputs(" -P, --port <number>   use this UDP port\n", out);
+	fputs(" -p, --priority <prio> mark given message with this priority\n", out);
+	fputs("     --prio-prefix     look for a prefix on every line read from stdin\n", out);
+	fputs(" -s, --stderr          output message to standard error as well\n", out);
+	fputs(" -t, --tag <tag>       mark every line with this tag\n", out);
 
 	fputs(USAGE_SEPARATOR, out);
 	fputs(USAGE_HELP, out);
@@ -266,9 +265,6 @@ int main(int argc, char **argv)
 		{ NULL,		0, 0, 0 }
 	};
 
-	setlocale(LC_ALL, "");
-	bindtextdomain(PACKAGE, LOCALEDIR);
-	textdomain(PACKAGE);
 	atexit(close_stdout);
 
 	tag = NULL;
@@ -280,7 +276,7 @@ int main(int argc, char **argv)
 		switch (ch) {
 		case 'f':		/* file to log */
 			if (freopen(optarg, "r", stdin) == NULL)
-				err(EXIT_FAILURE, _("file %s"),
+				err(EXIT_FAILURE, "file %s",
 				    optarg);
 			break;
 		case 'i':		/* log process id also */
