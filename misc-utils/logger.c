@@ -58,6 +58,12 @@
 #define	SYSLOG_NAMES
 #include <syslog.h>
 
+#define MAX_TAG_LEN 64
+#define MAX_MSG_LEN 8096
+#define MAX_LNE_LEN (MAX_MSG_LEN + MAX_TAG_LEN + 1024)
+#define TRUNCATE_MARK "... (trunc)"
+
+
 static int decode(char *name, CODE *codetab)
 {
 	register CODE *c;
@@ -144,42 +150,54 @@ static void usage(FILE *out)
 		" -h, --help     display this help and exit\n", out);
 }
 
-static void log_from_stdin(int LogSock, int pri, char const* tag){
-	char buf[1024] = "";
-	char *msg;
-	while (fgets(buf, sizeof(buf), stdin) != NULL) {
+static void gen_header(char *buf, int pri, char const* tag, int *prilen, int *hdrlen){
+	// <5>Apr 14 22:13:02 sjp: abc123
+	*prilen = snprintf(buf, MAX_LNE_LEN, "<%d>", pri);
+	*hdrlen = *prilen + snprintf(
+		buf + *prilen,
+		MAX_LNE_LEN - *prilen,
+		"MMM DD HH:MM:SS %s: ", tag);
+
+	if(*hdrlen + MAX_MSG_LEN >= MAX_LNE_LEN)
+		errx(EXIT_FAILURE, "buffer size too small");
+}
+
+static void log_from_stdin(int fd, char *buf, int prilen, int hdrlen){
+	uint64_t n_write_err = 0;
+	uint64_t n_write = 0;
+	char *msg = buf + hdrlen;
+
+	while (fgets(msg, MAX_MSG_LEN, stdin) != NULL) {
+		int len;
+
+		len = strlen(msg);
+		if(len + 1 == MAX_MSG_LEN)
+			memmove(msg + len - sizeof(TRUNCATE_MARK)-1,
+				TRUNCATE_MARK,
+				sizeof(TRUNCATE_MARK)-1);
+
 		/* glibc is buggy and adds an additional newline,
 		   so we have to remove it here until glibc is fixed */
-		int len = strlen(buf);
+		if(len > 0 && msg[len - 1] == '\n'){
+			msg[len - 1] = '\0';
+			--len;
+		}
 
-		if (len > 0 && buf[len - 1] == '\n')
-			buf[len - 1] = '\0';
-
-		msg = buf;
-
-
-
-       char buf[1000];
-       char const* cp, *tp;
-       time_t now;
-
-
-       if (tag)
-	       cp = tag;
-       else {
-	       cp = getlogin();
-	       if (!cp)
-		       cp = "<someone>";
-       }
-       time(&now);
-       tp = ctime(&now)+4;
-
-       snprintf(buf, sizeof(buf), "<%d>%.15s %.200s: %.400s",
-		pri, tp, cp, msg);
-
-       if (write(fd, buf, strlen(buf)+1) < 0)
-	       return; /* error */
-
+		if(len > 0){
+			time_t now;
+			struct tm now_tm;
+			time(&now);
+			localtime_r(&now, &now_tm);
+			strftime(buf + prilen,
+				 strlen("MMM DD HH:MM:SS"),
+				 "%b %d %H:%M:%S",
+				 &now_tm);
+			++n_write;
+			if(write(fd, buf, strlen(buf)+1) < 0)
+				++n_write_err;
+			if((n_write & 0xffff) == 0)
+				printf("%d %d %d\n", n_write & 0xfff, n_write, n_write_err);
+		}
 	}
 }
 
@@ -192,9 +210,13 @@ static void log_from_stdin(int LogSock, int pri, char const* tag){
 int main(int argc, char **argv)
 {
 	int LogSock;
-	int ch, pri;
-	char *tag;
-	uint16_t port;
+	int ch, pri = LOG_NOTICE;
+	char *tag = NULL;
+	uint16_t port = 0;
+
+	char buf[MAX_LNE_LEN];
+	int prilen, hdrlen;
+
 	static const struct option longopts[] = {
 		{ "priority",	required_argument,  0, 'p' },
 		{ "tag",	required_argument,  0, 't' },
@@ -203,8 +225,6 @@ int main(int argc, char **argv)
 		{ NULL,		0, 0, 0 }
 	};
 
-	tag = NULL;
-	pri = LOG_NOTICE;
 	while ((ch = getopt_long(argc, argv, "p:st:P:Vh", longopts, NULL)) != -1) {
 		int iport = 0;
 		switch (ch) {
@@ -213,11 +233,14 @@ int main(int argc, char **argv)
 			break;
 		case 't':		/* tag */
 			tag = optarg;
+			if(strlen(tag) > MAX_TAG_LEN)
+				errx(EXIT_FAILURE,
+				     "tag must be no longer than %d", MAX_TAG_LEN);
 			break;
 		case 'P':
 			iport = atoi(optarg);
 			if(iport > (uint16_t)-1 || iport <= 0)
-				errx(EXIT_FAILURE, "Invalid port number");
+				errx(EXIT_FAILURE, "Invalid port");
 			port = iport;
 			break;
 		case 'h':
@@ -232,12 +255,19 @@ int main(int argc, char **argv)
 	argc -= optind;
 	argv += optind;
 
+	if(port == 0)
+		errx(EXIT_FAILURE, "port is required.");
+
+	if(tag == NULL)
+		errx(EXIT_FAILURE, "tag is required.");
+
 	if (argc > 0)
 		errx(EXIT_FAILURE, "extra command line arguments.");
 
 	/* setup for logging */
 	LogSock = inet_socket(port);
-	log_from_stdin(LogSock, pri, tag);
+	gen_header(buf, pri, tag, &prilen, &hdrlen);
+	log_from_stdin(LogSock, buf, prilen, hdrlen);
 	close(LogSock);
 	return EXIT_SUCCESS;
 }
